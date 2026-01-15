@@ -1,4 +1,3 @@
-import random
 from typing import List
 from nertz.models.cards import PlayingCard
 

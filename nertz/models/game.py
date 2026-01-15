@@ -3,7 +3,8 @@ from typing import List, TypeAlias
 from nertz.core.deck import DeckManager
 from nertz.engine.layout import Table
 from nertz.core.foundation import Foundation
-from nertz.utils.constants import PlayerIndex, FoundationKey
+from nertz.models.cards import PlayingCard
+from nertz.utils.constants import PlayerIndex, FoundationIdentifier
 
 
 
@@ -28,9 +29,15 @@ class GameState:
             player = PlayerState(player_index=i)
             self.players.append(player)
 
-        self.foundations : dict[FoundationKey, Foundation] = {}
+        self.foundations : dict[FoundationIdentifier, Foundation] = {}
         """Keys are represented as: foundation_[PINDEX]_[SUIT]"""
         self.table : Table = Table(player_count)
+
+    def create_foundation(self, card: PlayingCard, player_index: PlayerIndex) -> Foundation:
+        foundation = Foundation(card, player_index)
+        self.foundations[foundation.identifier] = foundation
+
+        return foundation
 
 
     def validate_player_piles(self) -> bool:

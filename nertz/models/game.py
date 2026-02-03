@@ -24,7 +24,7 @@ class GameState:
     def __init__(self, player_count: int):
         self.player_count = player_count
 
-        self.players = []
+        self.players : List[PlayerState] = []
         for i in range(player_count):
             player = PlayerState(player_index=i)
             self.players.append(player)

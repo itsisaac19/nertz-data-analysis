@@ -1,12 +1,13 @@
 from nertz.engine.simulator import NertzEngine
+from nertz.ui.pygame_view import PygameNertzView
+from nertz.utils.logger import Logger
 
 def main():
     engine = NertzEngine(player_count=4)
-    engine.start_new_game()
-    turns = 0
-    while turns < 1:
-        engine.play_turn()
-        turns += 1
+    Logger.verbose = True # Enable verbose logging
+
+    view = PygameNertzView(engine) 
+    view.run()
 
 if __name__ == "__main__":
     main()

@@ -18,3 +18,8 @@ class PlayingCard:
     
     def __str__(self) -> str:
         return f"{self.rank} of {self.suit}"
+    
+    def equals(self, other: 'PlayingCard') -> bool:
+        return (self.suit == other.suit and
+                self.rank == other.rank and
+                self.player_index == other.player_index)

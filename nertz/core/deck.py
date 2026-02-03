@@ -116,6 +116,11 @@ class DeckManager:
         return None
 
     def top_stream_cards(self, count: int = 3) -> list[PlayingCard]:
+        if len(self.cards_in_stream) < count:
+            # Later we need to handle recycling the stream back into the deck
+            # for now, just raise an error
+            raise ValueError("Not enough cards in stream")
+        
         return [c for c in self.cards_in_stream[-count:] if c is not None]
     
     def river_slot_top_cards(self) -> list[Optional[PlayingCard]]:

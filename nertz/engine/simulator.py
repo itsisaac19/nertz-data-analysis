@@ -2,10 +2,12 @@ from typing import List, Literal, Optional, TypeAlias
 from dataclasses import dataclass
 from enum import Enum
 
-from nertz.models.game import GameState
+from nertz.models.game import GameState, PlayerState
 from nertz.models.cards import PlayingCard, RANKS
 from nertz.engine.layout import Point
 from nertz.utils.constants import FoundationIdentifier
+
+from nertz.utils.logger import Logger
 
 @dataclass
 class GameResult:
@@ -24,6 +26,7 @@ class MoveType(Enum):
     DECK_TO_RIVER      = "DeckToRiver"
     NERTZ_TO_RIVER     = "NertzToRiver"
     RIVER_TO_RIVER     = "RiverToRiver"
+    DECK_TO_DECK       = "DeckToDeck"  # Represents flipping into stream from deck
 
 # Base priority weights per move type
 MOVE_TYPE_WEIGHTS: dict[MoveType, float] = {
@@ -33,6 +36,11 @@ MOVE_TYPE_WEIGHTS: dict[MoveType, float] = {
     MoveType.DECK_TO_FOUNDATION:  0.4,
     MoveType.DECK_TO_RIVER:       0.3,
     MoveType.RIVER_TO_RIVER:      0.3,
+
+    # We will use DECK_TO_DECK to represent the action 
+    # of flipping into the stream from the deck.
+    # This is a very low priority move.
+    MoveType.DECK_TO_DECK:        0.1, 
 }
 
 LocationType: TypeAlias = Literal[
@@ -113,24 +121,23 @@ class Move:
 # TODO: Implement scoring and end-game conditions
 # TODO: Route print calls to a separate logger layer
 # TODO: Add unit tests for move priority calculations and conflict resolution
-
 class NertzEngine:
     def __init__(self, player_count: int = 2):
         self.player_count = player_count
-        self.game_state : GameState = GameState(player_count=player_count)
+        self.game_state: GameState = GameState(player_count=player_count)
         self.turn_counter = 0
+        self.logger = Logger()
 
     def _distance_player_to_river(self, player_index: int) -> float:
         """Approximate distance from player to their river area."""
         table = self.game_state.table
         player_pos = Point(*table.get_player_position(player_index))
-        # If river is conceptually at the player's position, distance can just be 0.0;
-        # keep this method so you can change the model later without touching all callers.
         return table.distance_between(player_pos, player_pos)
         
     def start_new_game(self) -> None:
         """Initialize a new game"""
         self.turn_counter = 0
+        self.logger.log("Starting new game", level="INFO")
     
     """Engine operates on fixed time intervals:
     1. Each player calculates legal moves (with timeout)
@@ -144,10 +151,11 @@ class NertzEngine:
             raise ValueError("Game has not been started.")
 
         if self.is_game_over():
-            print("Game over. Cannot play further turns.")
+            self.logger.log("Game over. Cannot play further turns.", level="WARNING")
             return
 
-        print(f"--- Turn {self.turn_counter + 1} ---")
+        turn_number = self.turn_counter + 1
+        self.logger.log(f"--- TURN {turn_number} ---", level="INFO")
         
         # Placeholder logic for a turn
         self.turn_counter += 1
@@ -158,28 +166,43 @@ class NertzEngine:
             table = self.game_state.table
             player_pos = table.get_player_position(player.player_index)
             calculated_moves = self.calculate_legal_moves(player.player_index)
-            print("-------------")
-            print(f"Player {player.player_index} at position {player_pos} has {len(calculated_moves)} legal moves.")
+            self.logger.log_debug("-------------")
+            self.logger.log_debug(
+                f"Player {player.player_index} at {player_pos} has "
+                f"{len(calculated_moves)} legal moves."
+            )
+
             # Print player's river and stream cards
-            print("[RIVER]:")
+            self.logger.log_debug("[RIVER STATE]")
             for i, river_pile in enumerate(player.deck.cards_in_river):
                 if river_pile:
                     top_card = river_pile[-1]
-                    print(f"  SLOT {i}: Top card is {top_card}")
+                    self.logger.log_debug(f"  River slot {i}: top card {top_card}")
                 else:
-                    print(f"  River Pile {i}: Empty")
-            print("Stream Cards:")
-            for i, stream_card in enumerate(player.deck.cards_in_stream):
-                if stream_card:
-                    print(f"  {stream_card}")
-                else:
-                    print(f"  Stream Card {i}: Empty")
+                    self.logger.log_debug(f"  River slot {i}: <empty>")
 
-            print("Moves:")
+            self.logger.log_debug("[STREAM STATE]")
+            if player.deck.cards_in_stream:
+                top_stream_card = player.deck.top_stream_cards(count=1)[0]
+                self.logger.log_debug(f"  Top stream card: {top_stream_card}")
+            else:
+                self.logger.log_debug("  Top stream card: <empty>")
+
+            self.logger.log_debug("[LEGAL MOVES]")
             highest_total = -1.0
             chosen_move = None
             for move in calculated_moves:
-                print(f"  Move {move.card} from {move.source_pile} to {move.destination_pile} with priority {move.priority:.2f} and distance {move.distance:.2f}")
+                self.logger.log_debug(
+                    "  Move: card=%s from=%s to=%s "
+                    "priority=%.2f distance=%.2f"
+                    % (
+                        move.card,
+                        move.source_pile,
+                        move.destination_pile,
+                        move.priority,
+                        move.distance,
+                    )
+                )
                 combined_score = move.priority + move.distance
                 if combined_score > highest_total:
                     highest_total = combined_score
@@ -187,10 +210,21 @@ class NertzEngine:
 
             if chosen_move:
                 chosen_moves_list.append(chosen_move)
-                print(f"Chosen Move: {chosen_move.card} from {chosen_move.source_pile} to {chosen_move.destination_pile} with priority {chosen_move.priority:.2f} and distance {chosen_move.distance:.2f}")
-        
+                self.logger.log(
+                    "Chosen move: player=%d card=%s from=%s to=%s "
+                    "priority=%.2f distance=%.2f"
+                    % (
+                        chosen_move.player_index,
+                        chosen_move.card,
+                        chosen_move.source_pile,
+                        chosen_move.destination_pile,
+                        chosen_move.priority,
+                        chosen_move.distance,
+                    ),
+                    level="INFO",
+                )
 
-        print("Resolving conflicts and executing moves...")
+        self.logger.log("Resolving conflicts and executing moves...", level="INFO")
 
         """First, identify which moves can be executed without conflict.
         Conflicts only arise when two moves have the same foundation destination.
@@ -221,24 +255,52 @@ class NertzEngine:
                 self.execute_move(foundation_moves[0])
             else:
                 # Resolve conflict by priority
-                # Custom sort: priority desc, distance asc, player_index asc
                 foundation_moves.sort(
                     key=lambda m: (-m.priority, m.distance, m.player_index)
                 )
                 best_move = foundation_moves[0]
                 self.execute_move(best_move)
-                print(f"Conflict on foundation {foundation_id}. Executed move by Player {best_move.player_index} with priority {best_move.priority:.2f}. Other moves discarded.")
+                self.logger.log(
+                    "Conflict on foundation %s. Executed move by player %d "
+                    "(priority=%.2f, distance=%.2f). %d competing move(s) discarded."
+                    % (
+                        foundation_id,
+                        best_move.player_index,
+                        best_move.priority,
+                        best_move.distance,
+                        len(foundation_moves) - 1,
+                    ),
+                    level="INFO",
+                )
             
     def execute_move(self, move: Move) -> None:
-        print(f"Executing move: Player {move.player_index} moves {move.card} from {move.source_pile} to {move.destination_pile}")
+        self.logger.log(
+            "Executing move: player=%d card=%s from=%s to=%s"
+            % (
+                move.player_index,
+                move.card,
+                move.source_pile,
+                move.destination_pile,
+            ),
+            level="INFO",
+        )
         player = self.game_state.players[move.player_index]
+
+        if move.move_type == MoveType.DECK_TO_DECK:
+            # Special case: flip into stream from deck
+            player.deck.flip__into_stream()
+            self.logger.log(
+                f"Player {move.player_index} flipped cards into stream.",
+                level="INFO",
+            )
+            return
 
         self._apply_destination_effects(move, player)
         self._apply_source_effects(move, player)
 
-        print(f"Move executed successfully.")
+        self.logger.log_debug("Move executed successfully.")
 
-    def _apply_destination_effects(self, move: Move, player) -> None:
+    def _apply_destination_effects(self, move: Move, player: PlayerState) -> None:
         """Place the card in the destination pile."""
         if move.destination_pile == "FoundationPile":
             if move.card.rank == "A":
@@ -257,29 +319,47 @@ class NertzEngine:
             player.deck.cards_in_river[move.river_slot_destination].append(move.card)
         # DeckPile and NertzPile are never a destination in the current ruleset
 
-    def _apply_source_effects(self, move: Move, player) -> None:
+    def _apply_source_effects(self, move: Move, player: PlayerState) -> None:
         """Remove the card from the source pile."""
         if move.source_pile == "NertzPile":
-            if player.deck.cards_in_nertz and player.deck.cards_in_nertz[-1] == move.card:
+            if player.deck.cards_in_nertz and player.deck.cards_in_nertz[-1].equals(move.card):
                 player.deck.cards_in_nertz.pop()
             else:
                 raise ValueError("Top Nertz card does not match the move card.")
             
         elif move.source_pile == "DeckPile":
-            if player.deck.cards_in_stream and player.deck.cards_in_stream[-1] == move.card:
+            if player.deck.cards_in_stream and player.deck.cards_in_stream[-1].equals(move.card):
                 player.deck.cards_in_stream.pop()
             else:
                 raise ValueError("Top Deck stream card does not match the move card.")
             
         elif move.source_pile == "RiverPile":
-            print(f"Removing card {move.card} from RiverPile")
+            self.logger.log_debug(
+                f"Removing card {move.card} from RiverPile "
+                f"(player={move.player_index}, slot={move.river_slot_source})"
+            )
             if move.river_slot_source is None:
                 raise ValueError("River slot source index must be specified for RiverPile moves.")
             slot = player.deck.cards_in_river[move.river_slot_source]
-            if slot and slot[-1] == move.card:
-                slot.pop()
+
+            if move.destination_pile == "RiverPile":
+                """Check that the bottom card of the pile matches the move card."""
+                if slot and slot[0].equals(move.card):
+                    slot.pop()
+                else:
+                    self.logger.log_debug(
+                        f"RiverPile slot cards: {slot}"
+                    )
+                    raise ValueError("Bottom River card does not match the move card.")
             else:
-                raise ValueError("Top River card does not match the move card.")
+                """Normal case: moving single card from river to foundation."""
+                if slot and slot[-1].equals(move.card):
+                    slot.pop()
+                else:
+                    self.logger.log_debug(
+                        f"RiverPile slot cards: {slot}"
+                    )
+                    raise ValueError("Top River card does not match the move card.")
                 
 
     def generate_river_move(self, player_index: int, card: PlayingCard, source_pile: LocationType) -> Optional[Move]:
@@ -361,6 +441,21 @@ class NertzEngine:
         
         return None
 
+    def generate_stream_flip_move(self, player_index: int) -> Optional[Move]:
+        """Generate a move to flip into the stream from the deck"""
+        
+        move = Move(
+            player_index=player_index,
+            game_state=self.game_state,
+            source_pile="DeckPile",
+            destination_pile="DeckPile",
+            move_type=MoveType.DECK_TO_DECK,
+            card=None,  # No specific card for flip move
+            distance=0.0  # No distance penalty for flip move
+        )
+        
+        return move
+
     def calculate_legal_moves(self, player_index: int) -> List[Move]:
         """Calculate legal moves for a player"""
         if not self.game_state:
@@ -404,6 +499,12 @@ class NertzEngine:
                 legal_moves.append(move)
 
     def _add_river_to_river_moves(self, player_index: int, legal_moves: List[Move]) -> None:
+        """So this is a bit tricky. Generally, it is most advantageous to move an entire
+        pile from a river slot to another river slot, assuming the bottom card of the source
+        pile can be placed on the top card of the destination pile according to solitaire rules. This
+        is because it frees up the source river slot for new cards, and allows for more cards to be played from the deck/stream.
+        However, for N cards in each river pile, there are N possible moves: the entire pile, all but the bottom card, all
+        but the bottom two cards, etc. For simplicity, we will only consider moving the entire pile for now."""
         player = self.game_state.players[player_index]
         table = self.game_state.table
 
@@ -411,6 +512,9 @@ class NertzEngine:
             current_river_pile = player.deck.cards_in_river[i]
             if not current_river_pile:
                 continue
+
+            """Now we grab the bottom card of the current river pile and see if it can be placed
+            on top of any other river pile's top card."""
             source_card = current_river_pile[0]  # Bottom card of the pile
             for j in range(4): 
                 if i == j:
@@ -422,7 +526,17 @@ class NertzEngine:
                 if self._is_valid_solitaire_move(source_card, dest_card):
                     distance = self._distance_player_to_river(player_index)
 
-                    print(f"Legal RiverToRiver move found: {source_card} from slot {i} to slot {j}")
+                    self.logger.log_debug(
+                        "Legal RiverToRiver move: player=%d card=%s "
+                        "from_slot=%d to_slot=%d distance=%.2f"
+                        % (
+                            player_index,
+                            source_card,
+                            i,
+                            j,
+                            distance,
+                        )
+                    )
 
                     move = Move(
                         player_index=player_index,
@@ -433,27 +547,28 @@ class NertzEngine:
                         river_slot_destination=j,
                         move_type=MoveType.RIVER_TO_RIVER,
                         card=source_card,
-                        distance=distance
+                        distance=distance,
                     )
                     legal_moves.append(move)
 
     def _add_deck_moves(self, player_index: int, legal_moves: List[Move]) -> None:
         player = self.game_state.players[player_index]
-        if not player.deck.cards_in_deck:
-            return
+        
+        stream_flip_move = self.generate_stream_flip_move(player_index)
+        if stream_flip_move:
+            legal_moves.append(stream_flip_move)
 
-        # Check the top 3 cards in the stream
-        top_deck_cards = player.deck.cards_in_stream[-3:]
-        for deck_card in top_deck_cards:
-            if deck_card is None:
-                continue
-            move = self.generate_river_move(player_index, deck_card, "DeckPile")
+        # Check only the top card of the deck stream
+        top_deck_card : PlayingCard = player.deck.top_stream_cards(count=1)[0]
+        if top_deck_card is None:
+            return
+        move = self.generate_river_move(player_index, top_deck_card, "DeckPile")
+        if move:
+            legal_moves.append(move)
+        else:
+            move = self.generate_foundation_move(player_index, top_deck_card, "DeckPile")
             if move:
                 legal_moves.append(move)
-            else:
-                move = self.generate_foundation_move(player_index, deck_card, "DeckPile")
-                if move:
-                    legal_moves.append(move)
 
     def _next_rank(self, rank: str) -> str:
         """Get the next rank in sequence"""
@@ -485,6 +600,7 @@ class NertzEngine:
         # Placeholder logic for game over condition
         for player in self.game_state.players:
             if len(player.deck.cards_in_nertz) == 0:
+                self.logger.log(f"Player {player.player_index} has emptied their Nertz pile. Game over!", level="INFO")
                 return True
         
         return False

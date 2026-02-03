@@ -11,7 +11,9 @@ radius ~0.48 and foundations in a center cluster radius ~0.12"""
 import math, random
 import matplotlib.pyplot as plt
 from typing import TypeAlias, Union
+
 from nertz.utils.constants import PlayerIndex
+from nertz.utils.logger import Logger
 
 # Point between 0.0 and 1.0
 PointCoordinate : TypeAlias = float
@@ -34,6 +36,7 @@ class Table:
         self.player_positions : PositionSet = {}
         self.foundation_positions : PositionSet = {}
         self._initialize_positions()
+        self.logger = Logger()
 
     def distance_between(self, x1: Point, x2: Point) -> float:
         return math.sqrt((x1.x - x2.x) ** 2 + (x1.y - x2.y) ** 2)
@@ -83,12 +86,11 @@ class Table:
                     break
 
             if not too_close:
-                print(f"Placed {foundation_identifier} after {attempt} tries")
+                self.logger.log_debug(f"Placed {foundation_identifier} after {attempt} tries")
                 self.foundation_positions[foundation_identifier] = (x, y)
                 return Point(x, y)
 
-
-        print(f"Warning: Could not place {foundation_identifier} without overlap after {max_retries} tries.")
+        self.logger.log(f"Warning: Could not place {foundation_identifier} without overlap after {max_retries} tries.")
         # Place anyway at last attempted position
         self.foundation_positions[foundation_identifier] = (x, y)
         return Point(x, y)

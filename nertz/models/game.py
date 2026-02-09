@@ -4,7 +4,7 @@ from nertz.core.deck import DeckManager
 from nertz.engine.layout import Table
 from nertz.core.foundation import Foundation
 from nertz.models.cards import PlayingCard
-from nertz.utils.constants import PlayerIndex, FoundationIdentifier
+from nertz.engine.constants import PlayerIndex, FoundationIdentifier
 
 
 

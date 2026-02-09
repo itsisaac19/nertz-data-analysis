@@ -2,7 +2,7 @@
 from typing import List, Literal
 from dataclasses import dataclass
 
-from nertz.utils.constants import PlayerIndex
+from nertz.engine.constants import PlayerIndex
 
 SUIT = Literal["spades", "clubs", "hearts", "diamonds"]
 SUITS: List[str] = ["spades", "clubs", "hearts", "diamonds"]

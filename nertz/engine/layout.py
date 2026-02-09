@@ -12,7 +12,7 @@ import math, random
 import matplotlib.pyplot as plt
 from typing import TypeAlias, Union
 
-from nertz.utils.constants import PlayerIndex
+from nertz.engine.constants import PlayerIndex
 from nertz.utils.logger import Logger
 
 # Point between 0.0 and 1.0
@@ -61,7 +61,7 @@ class Table:
         y = 0.5 + jitter_y
 
         # Use retry sampling to ensure foundations do not overlap too closely
-        min_distance = 0.07  # Minimum distance between foundations
+        min_distance = 0.1  # Minimum distance between foundations
         max_retries = 100
         
         for attempt in range(max_retries):  # Retry up to 100 times
